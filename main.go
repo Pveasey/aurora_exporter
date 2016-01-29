@@ -44,7 +44,7 @@ type exporter struct {
 	pendingTasks *prometheus.GaugeVec
 }
 
-type PendingTask struct {
+type pendingTask struct {
 	PenaltyMs int      `json:"penaltyMs"`
 	TaskIds   []string `json:"taskIds"`
 	Name      string
@@ -96,38 +96,16 @@ func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 	ch <- e.duration
 }
 
-func (e *exporter) scrape(ch chan<- prometheus.Metric) {
-	defer close(ch)
-
-	now := time.Now().UnixNano()
-	defer func() {
-		e.duration.Set(float64(time.Now().UnixNano()-now) / 1000000000)
-	}()
-
-	recordErr := func(err error) {
-		glog.Warning(err)
-		e.errors.Inc()
-	}
-
-	url, err := e.f.leaderURL()
+func (e *exporter) parsePending(url string, ch chan<- prometheus.Metric) error {
+	pendingResp, err := httpClient.Get(fmt.Sprintf("%s/pendingtasks", url))
 	if err != nil {
-		recordErr(err)
-		return
-	}
-
-	pendingURL := fmt.Sprintf("%s/pendingtasks", url)
-	pendingResp, err := httpClient.Get(pendingURL)
-	if err != nil {
-		recordErr(err)
-		return
+		return err
 	}
 	defer pendingResp.Body.Close()
 
-	pending := make([]PendingTask, 0)
-
+	pending := make([]pendingTask, 0)
 	if err = json.NewDecoder(pendingResp.Body).Decode(&pending); err != nil {
-		recordErr(err)
-		return
+		return err
 	}
 
 	for _, task := range pending {
@@ -138,19 +116,19 @@ func (e *exporter) scrape(ch chan<- prometheus.Metric) {
 		ch <- metric
 	}
 
-	varsURL := fmt.Sprintf("%s/vars.json", url)
-	resp, err := httpClient.Get(varsURL)
+	return nil
+}
+
+func (e *exporter) parseVars(url string, ch chan<- prometheus.Metric) error {
+	resp, err := httpClient.Get(fmt.Sprintf("%s/vars.json", url))
 	if err != nil {
-		recordErr(err)
-		return
+		return err
 	}
 	defer resp.Body.Close()
 
 	var vars map[string]interface{}
-
 	if err = json.NewDecoder(resp.Body).Decode(&vars); err != nil {
-		recordErr(err)
-		return
+		return err
 	}
 
 	for name, v := range vars {
@@ -175,7 +153,37 @@ func (e *exporter) scrape(ch chan<- prometheus.Metric) {
 			)
 		}
 
-		labelVars(ch, name, v)
+		labelVars(name, v)
+	}
+
+	return nil
+}
+
+func (e *exporter) scrape(ch chan<- prometheus.Metric) {
+	defer close(ch)
+
+	now := time.Now().UnixNano()
+	defer func() {
+		e.duration.Set(float64(time.Now().UnixNano()-now) / 1000000000)
+	}()
+
+	recordErr := func(err error) {
+		glog.Warning(err)
+		e.errors.Inc()
+	}
+
+	url, err := e.f.leaderURL()
+	if err != nil {
+		recordErr(err)
+		return
+	}
+
+	if err = e.parsePending(url, ch); err != nil {
+		recordErr(err)
+	}
+
+	if err = e.parseVars(url, ch); err != nil {
+		recordErr(err)
 	}
 }
 
