@@ -518,7 +518,7 @@ var prefixParser = map[string]*parser{
 		regex: regexp.MustCompile("tasks_(?P<state>.*)_(?P<role>.*)/(?P<env>.*)/(?P<job>.*)"),
 	},
 	"tasks_lost_rack_": &parser{
-		match: 5,
+		match: 2,
 		metric: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: namespace,
@@ -531,7 +531,7 @@ var prefixParser = map[string]*parser{
 	},
 
 	"task_store_": &parser{
-		match: 5,
+		match: 2,
 		metric: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: namespace,
