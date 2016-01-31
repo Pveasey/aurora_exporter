@@ -492,16 +492,22 @@ type parser struct {
 	regex  *regexp.Regexp
 }
 
-func (p *parser) parse(name string, value float64) {
+func (p *parser) parse(name string, value float64) prometheus.Metric {
 	match := p.regex.FindStringSubmatch(name)
 	if len(match) == p.match {
 		switch m := p.metric.(type) {
 		case *prometheus.CounterVec:
-			m.WithLabelValues(match[1:]...).Set(value)
+			metric := m.WithLabelValues(match[1:]...)
+			metric.(prometheus.Counter).Set(value)
+			return metric
 		case *prometheus.GaugeVec:
-			m.WithLabelValues(match[1:]...).Set(value)
+			metric := m.WithLabelValues(match[1:]...)
+			metric.(prometheus.Gauge).Set(value)
+			return metric
 		}
 	}
+
+	return nil
 }
 
 var prefixParser = map[string]*parser{
@@ -547,7 +553,7 @@ var prefixParser = map[string]*parser{
 		metric: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: namespace,
-				Name:      "update_transition.",
+				Name:      "update_transition",
 				Help:      "Update transition.",
 			},
 			[]string{"state"},
@@ -644,16 +650,22 @@ var slaParser = []*parser{
 	},
 }
 
-func labelVars(name string, value float64) {
+func labelVars(ch chan<- prometheus.Metric, name string, value float64) {
+	var metric prometheus.Metric
+
 	for prefix, parser := range prefixParser {
 		if strings.HasPrefix(name, prefix) {
-			parser.parse(name, value)
+			metric = parser.parse(name, value)
 		}
 	}
 
 	if strings.HasPrefix(name, "sla_") {
 		for _, parser := range slaParser {
-			parser.parse(name, value)
+			metric = parser.parse(name, value)
 		}
+	}
+
+	if metric != nil {
+		ch <- metric
 	}
 }

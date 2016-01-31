@@ -153,7 +153,7 @@ func (e *exporter) parseVars(url string, ch chan<- prometheus.Metric) error {
 			)
 		}
 
-		labelVars(name, v)
+		labelVars(ch, name, v)
 	}
 
 	return nil
