@@ -492,22 +492,24 @@ type parser struct {
 	regex  *regexp.Regexp
 }
 
-func (p *parser) parse(name string, value float64) prometheus.Metric {
+func (p *parser) parse(ch chan<- prometheus.Metric, name string, value float64) {
 	match := p.regex.FindStringSubmatch(name)
 	if len(match) == p.match {
+		var metric prometheus.Metric
+
 		switch m := p.metric.(type) {
 		case *prometheus.CounterVec:
-			metric := m.WithLabelValues(match[1:]...)
+			metric = m.WithLabelValues(match[1:]...)
 			metric.(prometheus.Counter).Set(value)
-			return metric
 		case *prometheus.GaugeVec:
-			metric := m.WithLabelValues(match[1:]...)
+			metric = m.WithLabelValues(match[1:]...)
 			metric.(prometheus.Gauge).Set(value)
-			return metric
+		}
+
+		if metric != nil {
+			ch <- metric
 		}
 	}
-
-	return nil
 }
 
 var prefixParser = map[string]*parser{
@@ -651,21 +653,15 @@ var slaParser = []*parser{
 }
 
 func labelVars(ch chan<- prometheus.Metric, name string, value float64) {
-	var metric prometheus.Metric
-
 	for prefix, parser := range prefixParser {
 		if strings.HasPrefix(name, prefix) {
-			metric = parser.parse(name, value)
+			parser.parse(ch, name, value)
 		}
 	}
 
 	if strings.HasPrefix(name, "sla_") {
 		for _, parser := range slaParser {
-			metric = parser.parse(name, value)
+			parser.parse(ch, name, value)
 		}
-	}
-
-	if metric != nil {
-		ch <- metric
 	}
 }
