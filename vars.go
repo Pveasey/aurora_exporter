@@ -537,7 +537,6 @@ var prefixParser = map[string]*parser{
 		),
 		regex: regexp.MustCompile("tasks_lost_rack_(?P<rack>.*)"),
 	},
-
 	"task_store_": &parser{
 		match: 2,
 		metric: prometheus.NewGaugeVec(
@@ -562,7 +561,6 @@ var prefixParser = map[string]*parser{
 		),
 		regex: regexp.MustCompile("update_transition_(?P<state>[A-Z]+)"),
 	},
-
 	"scheduler_lifecycle_": &parser{
 		match: 2,
 		metric: prometheus.NewGaugeVec(
