@@ -492,7 +492,7 @@ type parser struct {
 	regex  *regexp.Regexp
 }
 
-func (p *parser) parse(ch chan<- prometheus.Metric, name string, value float64) {
+func (p *parser) parse(name string, value float64, ch chan<- prometheus.Metric) {
 	match := p.regex.FindStringSubmatch(name)
 	if len(match) == p.match {
 		var metric prometheus.Metric
@@ -655,13 +655,13 @@ var slaParser = []*parser{
 func labelVars(ch chan<- prometheus.Metric, name string, value float64) {
 	for prefix, parser := range prefixParser {
 		if strings.HasPrefix(name, prefix) {
-			parser.parse(ch, name, value)
+			parser.parse(name, value, ch)
 		}
 	}
 
 	if strings.HasPrefix(name, "sla_") {
 		for _, parser := range slaParser {
-			parser.parse(ch, name, value)
+			parser.parse(name, value, ch)
 		}
 	}
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -18,9 +18,11 @@ import (
 const namespace = "aurora"
 
 var (
-	addr       = flag.String("web.listen-address", ":9113", "Address to listen on for web interface and telemetry.")
-	auroraURL  = flag.String("exporter.aurora-url", "http://127.0.0.1:8081", "URL to an Aurora scheduler or ZooKeeper ensemble")
-	metricPath = flag.String("web.telemetry-path", "/metrics", "Path under which to expose metrics.")
+	addr           = flag.String("web.listen-address", ":9113", "Address to listen on for web interface and telemetry.")
+	auroraURL      = flag.String("exporter.aurora-url", "http://127.0.0.1:8081", "URL to an Aurora scheduler or ZooKeeper ensemble")
+	metricPath     = flag.String("web.telemetry-path", "/metrics", "Path under which to expose metrics.")
+	bypassRedirect = flag.Bool("exporter.bypass-leader-redirect", false,
+		"When scraping a HTTP scheduler url, don't follow redirects to the leader instance.")
 )
 
 var noLables = []string{}
@@ -96,15 +98,20 @@ func (e *exporter) Collect(ch chan<- prometheus.Metric) {
 	ch <- e.duration
 }
 
-func (e *exporter) parsePending(url string, ch chan<- prometheus.Metric) error {
-	pendingResp, err := httpClient.Get(fmt.Sprintf("%s/pendingtasks", url))
+func (e *exporter) parsePending(url string, bypass bool, ch chan<- prometheus.Metric) error {
+	req, err := newRequest("GET", url+"/pendingtasks", nil, bypass)
 	if err != nil {
 		return err
 	}
-	defer pendingResp.Body.Close()
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
 
 	pending := make([]pendingTask, 0)
-	if err = json.NewDecoder(pendingResp.Body).Decode(&pending); err != nil {
+	if err = json.NewDecoder(resp.Body).Decode(&pending); err != nil {
 		return err
 	}
 
@@ -119,8 +126,13 @@ func (e *exporter) parsePending(url string, ch chan<- prometheus.Metric) error {
 	return nil
 }
 
-func (e *exporter) parseVars(url string, ch chan<- prometheus.Metric) error {
-	resp, err := httpClient.Get(fmt.Sprintf("%s/vars.json", url))
+func (e *exporter) parseVars(url string, bypass bool, ch chan<- prometheus.Metric) error {
+	req, err := newRequest("GET", url+"/vars.json", nil, bypass)
+	if err != nil {
+		return err
+	}
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -172,19 +184,37 @@ func (e *exporter) scrape(ch chan<- prometheus.Metric) {
 		e.errors.Inc()
 	}
 
-	url, err := e.f.leaderURL()
+	var url string
+	var err error
+	if *bypassRedirect {
+		url = *auroraURL
+	} else {
+		url, err = e.f.leaderURL()
+	}
 	if err != nil {
 		recordErr(err)
 		return
 	}
 
-	if err = e.parsePending(url, ch); err != nil {
+	if err = e.parsePending(url, *bypassRedirect, ch); err != nil {
 		recordErr(err)
 	}
 
-	if err = e.parseVars(url, ch); err != nil {
+	if err = e.parseVars(url, *bypassRedirect, ch); err != nil {
 		recordErr(err)
 	}
+}
+
+func newRequest(method, urlStr string, body io.Reader, bypass bool) (*http.Request, error) {
+	req, err := http.NewRequest(method, urlStr, body)
+	if err != nil {
+		return nil, err
+	}
+	if bypass {
+		req.Header.Add("Bypass-Leader-Redirect", "true")
+	}
+
+	return req, nil
 }
 
 func main() {
