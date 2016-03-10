@@ -575,8 +575,8 @@ var prefixParser = map[string]*parser{
 	},
 }
 
-var slaParser = []*parser{
-	&parser{
+var suffixParser = map[string]*parser{
+	"_mtta_ms": &parser{
 		match: 4,
 		metric: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -588,7 +588,7 @@ var slaParser = []*parser{
 		),
 		regex: regexp.MustCompile("sla_(?P<role>.*)/(?P<env>.*)/(?P<job>.*)_mtta_ms$"),
 	},
-	&parser{
+	"_mttr_ms": &parser{
 		match: 4,
 		metric: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -600,7 +600,7 @@ var slaParser = []*parser{
 		),
 		regex: regexp.MustCompile("sla_(?P<role>.*)/(?P<env>.*)/(?P<job>.*)_mttr_ms$"),
 	},
-	&parser{
+	"_mtta_ms_nonprod": &parser{
 		match: 4,
 		metric: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -612,7 +612,7 @@ var slaParser = []*parser{
 		),
 		regex: regexp.MustCompile("sla_(?P<role>.*)/(?P<env>.*)/(?P<job>.*)_mtta_ms_nonprod$"),
 	},
-	&parser{
+	"_mttr_ms_nonprod": &parser{
 		match: 4,
 		metric: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -624,7 +624,7 @@ var slaParser = []*parser{
 		),
 		regex: regexp.MustCompile("sla_(?P<role>.*)/(?P<env>.*)/(?P<job>.*)_mttr_ms_nonprod$"),
 	},
-	&parser{
+	"_platform_uptime_percent": &parser{
 		match: 4,
 		metric: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -636,7 +636,7 @@ var slaParser = []*parser{
 		),
 		regex: regexp.MustCompile("sla_(?P<role>.*)/(?P<env>.*)/(?P<job>.*)_platform_uptime_percent$"),
 	},
-	&parser{
+	"_platform_uptime_percent_nonprod": &parser{
 		match: 4,
 		metric: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
@@ -657,8 +657,8 @@ func labelVars(ch chan<- prometheus.Metric, name string, value float64) {
 		}
 	}
 
-	if strings.HasPrefix(name, "sla_") {
-		for _, parser := range slaParser {
+	for suffix, parser := range suffixParser {
+		if strings.HasSuffix(name, suffix) {
 			parser.parse(name, value, ch)
 		}
 	}
